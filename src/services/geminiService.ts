@@ -1,56 +1,37 @@
-
-import { Type } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { ResumeData, Skill, Experience, Education, ATSResult } from "../types";
 import mammoth from "mammoth";
 
+// Initialize the Gemini SDK
+// Note: In AI Studio Build, GEMINI_API_KEY is automatically available.
+// For Vercel, ensure you set GEMINI_API_KEY (or VITE_GEMINI_API_KEY) in the environment.
+const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || (process.env as any).GEMINI_API_KEY;
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+
 /**
- * Robust calling wrapper with retries to handle transient RPC and Rate Limit errors
+ * Robust calling wrapper for the Gemini SDK
  */
-async function callGemini(params: any, retries = 7, delay = 3000): Promise<{ text: string }> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const response = await fetch("/api/gemini", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(params),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw { status: response.status, message: errorData.error || response.statusText };
-      }
-
-      return await response.json();
-    } catch (error: any) {
-      const errorStr = JSON.stringify(error).toLowerCase();
-      const errorMessage = (error?.message || '').toLowerCase();
-      
-      const isRateLimit = errorMessage.includes('429') || 
-                          errorMessage.includes('resource_exhausted') ||
-                          errorStr.includes('429') ||
-                          errorStr.includes('resource_exhausted');
-                           
-      const isTransient = errorMessage.includes('500') || 
-                          errorMessage.includes('rpc failed') ||
-                          errorMessage.includes('xhr error') ||
-                          errorMessage.includes('deadline exceeded') ||
-                          errorStr.includes('500') ||
-                          errorStr.includes('unavailable');
-      
-      if ((isTransient || isRateLimit) && i < retries - 1) {
-        const backoffFactor = isRateLimit ? 3.5 : 2;
-        const waitTime = delay * Math.pow(backoffFactor, i) + (Math.random() * 1500);
-        
-        console.warn(`Gemini API ${isRateLimit ? 'Rate Limit' : 'Transient Error'} (retry ${i + 1}/${retries}), waiting ${Math.round(waitTime)}ms...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        continue;
-      }
-      throw error;
-    }
+async function callGemini(params: any): Promise<{ text: string }> {
+  if (!ai) {
+    throw new Error("Gemini API key is not configured. Please add GEMINI_API_KEY to your environment.");
   }
-  throw new Error("Failed to call Gemini after multiple retries.");
+
+  try {
+    const response = await ai.models.generateContent({
+      model: params.model || "gemini-3-flash-preview",
+      contents: Array.isArray(params.contents) ? { parts: params.contents } : params.contents,
+      config: {
+        systemInstruction: params.config?.systemInstruction,
+        responseMimeType: params.config?.responseMimeType,
+        responseSchema: params.config?.responseSchema,
+      }
+    });
+
+    return { text: response.text || "" };
+  } catch (error: any) {
+    console.error("Gemini SDK Error:", error);
+    throw error;
+  }
 }
 
 const RESUME_SCHEMA: any = {

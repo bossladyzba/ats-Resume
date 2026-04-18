@@ -14,40 +14,10 @@ const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: "10mb" }));
 
-// API Proxy for Gemini to keep the key secure
-app.post("/api/gemini", async (req, res) => {
-  const { model, contents, config } = req.body;
-  
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: "GEMINI_API_KEY not configured on server" });
-  }
-
-  try {
-    const genAI = new GoogleGenAI(apiKey);
-    const genModel = genAI.getGenerativeModel({ 
-      model: model || "gemini-1.5-flash",
-      systemInstruction: config?.systemInstruction,
-    });
-
-    const result = await genModel.generateContent({
-      contents: Array.isArray(contents) ? contents : [contents],
-      generationConfig: {
-          responseMimeType: config?.responseMimeType,
-          responseSchema: config?.responseSchema,
-      }
-    });
-    
-    const response = await result.response;
-    const text = response.text();
-    res.json({ text });
-  } catch (error: any) {
-    console.error("Gemini Server Error:", error);
-    res.status(error.status || 500).json({ 
-      error: error.message,
-      status: error.status
-    });
-  }
+// API Proxy for Gemini is disabled on the backend.
+// Use the Gemini SDK directly in the frontend services.
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok" });
 });
 
 // For development only: vite middleware
